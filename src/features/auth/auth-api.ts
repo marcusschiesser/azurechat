@@ -2,6 +2,8 @@ import NextAuth, { NextAuthOptions } from "next-auth";
 import { Provider } from "next-auth/providers";
 import AzureADProvider from "next-auth/providers/azure-ad";
 import GitHubProvider from "next-auth/providers/github";
+import LinkedInProvider from "next-auth/providers/linkedin";
+import { sendSlackMessage } from "../slack/slack";
 
 const configureIdentityProvider = () => {
   const providers: Array<Provider> = [];
@@ -47,6 +49,30 @@ const configureIdentityProvider = () => {
       })
     );
   }
+
+  if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
+    providers.push(
+      LinkedInProvider({
+        clientId: process.env.LINKEDIN_CLIENT_ID!,
+        clientSecret: process.env.LINKEDIN_CLIENT_SECRET!,
+        authorization: {
+          params: { scope: "openid profile email" },
+        },
+        issuer: "https://www.linkedin.com",
+        jwks_endpoint: "https://www.linkedin.com/oauth/openid/jwks",
+        async profile(profile) {
+          const newProfile = {
+            ...profile,
+            isAdmin: adminEmails?.includes(profile.email.toLowerCase()),
+            id: profile.sub,
+            image: profile.picture,
+          };
+          return newProfile;
+        },
+      })
+    );
+  }
+
   return providers;
 };
 
@@ -67,6 +93,13 @@ export const options: NextAuthOptions = {
   },
   session: {
     strategy: "jwt",
+  },
+  events: {
+    async signIn(message) {
+      sendSlackMessage(
+        `User signed in to Azure Chat: ${message.profile?.name} - ${message.profile?.email}`
+      );
+    },
   },
 };
 
